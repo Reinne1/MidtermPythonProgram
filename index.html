@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Scraper</title>
+    <link rel="stylesheet" href="https://pyscript.net/latest/pyscript.css">
+    <script defer src="https://pyscript.net/latest/pyscript.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #ffeef8; /* Light pink background */
+            color: #333;
+            padding: 20px;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #d5006d; /* Darker pink for headings */
+        }
+        
+        label, select, input, button {
+            display: block;
+            margin: 10px auto;
+            width: 300px;
+        }
+        
+        button {
+            background-color: #ff4081; /* Pink button */
+            color: white;
+            border: none;
+            padding: 10px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        button:hover {
+            background-color: #c60055; /* Darker pink on hover */
+        }
+        
+        .output-container {
+            margin-top: 20px;
+            border: 1px solid #f1a7c3; /* Light pink border */
+            padding: 10px;
+            background-color: white;
+        }
+        
+        .quote {
+            border: 1px solid #f1a7c3; /* Light pink border for quotes */
+            padding: 5px;
+            margin: 5px 0;
+        }
+        
+        #loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 0, 85, 0.5); /* Pink overlay */
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 24px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Web Scraper</h1>
+    
+    <label for="website-select">Select Website:</label>
+    <select id="website-select" onchange="updateCategorySelect()">
+        <option value="https://books.toscrape.com/">Books to Scrape</option>
+        <option value="https://quotes.toscrape.com/">Quotes to Scrape</option>
+    </select>
+
+    <input type="text" id="url-input" placeholder="Enter URL" value="https://books.toscrape.com/">
+
+    <label for="category-select">Select Category Type:</label>
+    <select id="category-select"></select>
+
+    <button id="scrape-button">Scrape</button>
+    
+    <div class="output-container">
+        <h2>Scraped Output:</h2>
+        <div id="output-display"></div>
+    </div>
+    
+    <div id="loading-overlay">Loading...</div>
+
+    <py-script>
+        from pyscript import Element
+        import asyncio
+
+        async def on_load():
+            Element("loading-overlay").element.style.display = "none"
+
+        asyncio.ensure_future(on_load())
+
+        # You can add additional PyScript functions here for future enhancements
+        def clear_output():
+            Element('output-display').element.innerHTML = ''
+    </py-script>
+
+    <script>
+        const categoriesForBooks = [
+            { value: ".product_pod", text: "Books (product pod)" },
+            { value: "h3 a", text: "Book Titles" },
+            { value: ".price_color", text: "Book Prices" }
+        ];
+
+        const categoriesForQuotes = [
+            { value: ".quote", text: "Quotes (quote)" },
+            { value: ".author", text: "Authors" },
+            { value: ".tag", text: "Tags" }
+        ];
+
+        function updateCategorySelect() {
+            const selectedWebsite = document.getElementById('website-select').value;
+            const categorySelect = document.getElementById('category-select');
+            categorySelect.innerHTML = ''; // Clear existing options
+
+            const categories = selectedWebsite.includes('books') ? categoriesForBooks : categoriesForQuotes;
+            categories.forEach(category => {
+                const option = document.createElement('option');
+                option.value = category.value;
+                option.textContent = category.text;
+                categorySelect.appendChild(option);
+            });
+        }
+
+        updateCategorySelect();
+
+        document.getElementById('scrape-button').onclick = async function() {
+            const url = document.getElementById('url-input').value;
+            const categoryType = document.getElementById('category-select').value;
+            const outputDisplay = document.getElementById('output-display');
+            const loadingOverlay = document.getElementById('loading-overlay');
+
+            loadingOverlay.style.display = 'flex'; // Show loading overlay
+
+            const corsProxy = "https://api.allorigins.win/get?url=";
+            const proxiedUrl = corsProxy + encodeURIComponent(url);
+
+            try {
+                const response = await fetch(proxiedUrl);
+                if (!response.ok) {
+                    throw new Error(`HTTP error: ${response.status} ${response.statusText}`);
+                }
+
+                const jsonData = await response.json();
+                const htmlContent = jsonData.contents;
+
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(htmlContent, 'text/html');
+
+                const elements = Array.from(doc.querySelectorAll(categoryType));
+                let scrapedData = '';
+
+                if (categoryType === '.quote') {
+                    elements.forEach(quote => {
+                        const text = quote.querySelector('.text')?.innerText.trim() || "No text available";
+                        const author = quote.querySelector('.author')?.innerText.trim() || "No author available";
+                        const tags = Array.from(quote.querySelectorAll('.tag')).map(tag => tag.innerText.trim()).join(', ') || "No tags available";
+
+                        scrapedData += `<div class="quote">Quote: "${text}"<br><span class="author">- ${author}</span><br><span class="tag">Tags: ${tags}</span></div>`;
+                    });
+                } else {
+                    elements.forEach(element => {
+                        const elementText = element.innerText.trim();
+                        if (elementText) {
+                            scrapedData += `${elementText}<br>`;
+                        }
+                    });
+                }
+
+                outputDisplay.innerHTML = scrapedData || "No data found.";
+            } catch (error) {
+                outputDisplay.innerHTML = `Error fetching URL: ${error.message}`;
+                console.error(error); // Log the error for debugging
+            } finally {
+                loadingOverlay.style.display = 'none'; // Hide loading overlay after operation
+            }
+        };
+
+        document.getElementById('website-select').onchange = function() {
+            const selectedUrl = this.value;
+            document.getElementById('url-input').value = selectedUrl;
+            updateCategorySelect(); // Update categories based on new selection
+        };
+    </script>
+</body>
+</html>
